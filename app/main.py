@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from .mcp_client.agent import agent_router
 from .mcp_client.serverconfig import multi_server_mcp_client
+from .prompts.prompt_file import system_message_for_tooling_agent, system_message_for_generic_agent
 from langchain.agents import create_agent
 from app.services.llm_service import get_openai_llm
 import traceback
@@ -34,21 +35,6 @@ async def lifespan(app: FastAPI):
         llm = get_openai_llm()
 
         # Create 2 LLM agents - one  with the available tools and other just a generic agent without tools. Both agents have different system prompts to guide their behavior.
-        system_message_for_tooling_agent = (
-            "You are a helpful assistant that can use tools to answer questions. You are not allowed to answer questions that are not related to the tools you have access to."
-            "DO NOT answer any questions from public internet."
-            "Return tool outputs in a structured format and never fabricate information. "
-            "If a tool needs missing information, ask the user a follow-up question instead of guessing. "
-            "When creating materials, follow the exact required input from tool and ask user if any inout is missing."
-            "Always pass the request context values for organization_name, organization_id, and user_id into tool inputs when relevant."
-        )
-        system_message_for_generic_agent = (
-            "You are a helpful assistant that can answer questions and provide information. "
-            "You are not allowed to answer questions that require access to tools."
-            "Only answer questions that are related to the information you have been trained on or fetch it from public internet."
-            "Return outputs in a structured format and never fabricate information. "
-            "If you need missing information, ask the user a follow-up question instead of guessing."
-        )
         llm_agent_with_tools = create_agent(llm, available_tools, system_prompt=system_message_for_tooling_agent)
         generic_llm_agent = create_agent(llm, [], system_prompt=system_message_for_generic_agent)
 

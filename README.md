@@ -86,8 +86,6 @@ DB_PASSKEY= Azure DB password
 
 ## Agent workflow graph
 
-## Agent workflow graph
-
 ```mermaid
 flowchart TD
     START([START]) --> router["router"]

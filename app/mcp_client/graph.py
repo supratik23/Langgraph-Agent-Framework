@@ -3,6 +3,7 @@ import json
 from typing import Literal
 from langgraph.graph import StateGraph, START, END
 from .models import AgentState
+from .prompt_file import build_tool_agent_context_prompt, build_generic_agent_context_prompt, build_router_prompt
 from langchain.messages import SystemMessage
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.checkpoint.memory import InMemorySaver
@@ -23,16 +24,7 @@ async def agent_graph():
     async def call_agent_with_tools(state: AgentState) -> dict:
         from app.main import llm_agent_with_tools
 
-        context_message = SystemMessage(
-            content=(
-                "Request context:\n"
-                f"- organization_name: {state.get('organization_name')}\n"
-                f"- organization_id: {state.get('organization_id')}\n"
-                f"- user_id: {state.get('user_id')}\n"
-                f"- session_id: {state.get('session_id')}\n"
-                "Use these values whenever a tool requires them and generate an organization-specific response."
-            )
-        )
+        context_message = SystemMessage(content=build_tool_agent_context_prompt(state))
         messages = [context_message, *state.get("messages", [])]
         result = await llm_agent_with_tools.ainvoke({"messages": messages})
         return {"messages": result, "next_destination": "router"}
@@ -41,17 +33,7 @@ async def agent_graph():
     async def call_generic_agent(state: AgentState) -> dict:
         from app.main import generic_llm_agent
 
-        context_message = SystemMessage(
-            content=(
-                "Request context:\n"
-                f"- organization_name: {state.get('organization_name')}\n"
-                f"- organization_id: {state.get('organization_id')}\n"
-                f"- user_id: {state.get('user_id')}\n"
-                f"- session_id: {state.get('session_id')}\n"
-                "Use these values for state management and memory tracking of user interactions. Do not use these values for any other purpose.\n"
-                "You are not allowed to answer questions that require access to tools. Only answer questions that are related to the information you have been trained on or fetch it from public internet."
-            )
-        )
+        context_message = SystemMessage(content=build_generic_agent_context_prompt(state))
         messages = [context_message, *state.get("messages", [])]
         result = await generic_llm_agent.ainvoke({"messages": messages})
         return {"messages": result, "next_destination": "router"}
@@ -62,21 +44,17 @@ async def agent_graph():
         return available_tools
 
     # ROUTER NODE: This node will handle the routing of requests based on the presence of tools. It will check if tools are available and route the request to the appropriate agent node (with or without tools).
-    def router_node(state: AgentState) -> str:
+    async def router_node(state: AgentState) -> str:
         """Evaluates the input query and decides which agent should take over."""
         from app.main import generic_llm_agent
 
         messages = state.get("messages", [])
         last_message = messages[-1] if messages else None
 
-        prompt = f"""
-        You are a router that decides which agent should handle the user's request based on the availability of tools.
-        The user query is: {last_message.content if last_message else 'No query provided.'}
-        If the query requires tools, route to the 'llm_agent_node'. If it does not require tools, route to the 'generic_agent_node'.
-        Respond with either 'internal_agent_node' or 'generic_agent_node' based on your evaluation.
-        """
-        response = generic_llm_agent.invoke({"messages": [SystemMessage(content=prompt)]})
+        prompt = build_router_prompt(last_message.content if last_message else "No query provided.")
+        response = await generic_llm_agent.ainvoke({"messages": [SystemMessage(content=prompt)]})
         decision = response[0].content.strip().lower()
+
         if decision == "internal_agent_node":
             return {"next_destination": "internal_agent_node"}
         elif decision == "generic_agent_node":
@@ -88,7 +66,7 @@ async def agent_graph():
     # Define Conditional Logic for Routing: This function will be used to determine the next node in the workflow based on the availability of tools. 
     #It will return True if tools are available, allowing the workflow to proceed to the agent node with tools; 
     #otherwise, it will route to the generic agent node.
-    def route_next(state: AgentState) -> Literal["internal_agent_node", "generic_agent_node"]:
+    async def route_next(state: AgentState) -> Literal["internal_agent_node", "generic_agent_node"]:
         return state["next_destination"]
 
     # Start building the agent state graph
