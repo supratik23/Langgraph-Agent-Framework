@@ -25,3 +25,4 @@ class AgentState(TypedDict):
     session_id: str | None = None
     organization_name: str | None = None
     user_id: str | None = None
+    next_destination: str | None = None

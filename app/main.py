@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
     Start the mcp_server tools and LLM agent on application startup, and perform any necessary cleanup on shutdown.
     """
     try:
-        global available_tools, llm_agent_with_tools
+        global available_tools, llm_agent_with_tools, generic_llm_agent
 
         # Fetch the list of available tools from the MCP server client
         available_tools = await multi_server_mcp_client.get_tools()
@@ -33,20 +33,25 @@ async def lifespan(app: FastAPI):
         # get the LLM model
         llm = get_openai_llm()
 
-        # Create the LLM agent with the available tools
-        system_message = (
-            "You are a helpful assistant that can use tools to answer questions. "
+        # Create 2 LLM agents - one  with the available tools and other just a generic agent without tools. Both agents have different system prompts to guide their behavior.
+        system_message_for_tooling_agent = (
+            "You are a helpful assistant that can use tools to answer questions. You are not allowed to answer questions that are not related to the tools you have access to."
+            "DO NOT answer any questions from public internet."
             "Return tool outputs in a structured format and never fabricate information. "
             "If a tool needs missing information, ask the user a follow-up question instead of guessing. "
-            "For site material stock updates, confirm the project/site name and material name, "
-            "ask for any missing required fields such as comment, use today's date when the user does not provide one, "
-            "and use a negative quantity for used stock or a positive quantity for added stock. "
-            "For worker attendance, confirm the project/site name and worker names, "
-            "default to full day unless half day is explicitly requested, "
-            "use attendance status Present or Absent, and pass worker names as a list when calling the attendance tool. "
+            "When creating materials, follow the exact required input from tool and ask user if any inout is missing."
             "Always pass the request context values for organization_name, organization_id, and user_id into tool inputs when relevant."
         )
-        llm_agent_with_tools = create_agent(llm, available_tools, system_prompt=system_message)
+        system_message_for_generic_agent = (
+            "You are a helpful assistant that can answer questions and provide information. "
+            "You are not allowed to answer questions that require access to tools."
+            "Only answer questions that are related to the information you have been trained on or fetch it from public internet."
+            "Return outputs in a structured format and never fabricate information. "
+            "If you need missing information, ask the user a follow-up question instead of guessing."
+        )
+        llm_agent_with_tools = create_agent(llm, available_tools, system_prompt=system_message_for_tooling_agent)
+        generic_llm_agent = create_agent(llm, [], system_prompt=system_message_for_generic_agent)
+
         logger.info("application_starting")
 
         yield

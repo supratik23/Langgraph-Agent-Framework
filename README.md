@@ -83,3 +83,22 @@ DB_PASSKEY= Azure DB password
 ├── tests -------------------------------------------[unit test cases folder]
 ```
 
+
+## Agent workflow graph
+
+## Agent workflow graph
+
+```mermaid
+flowchart TD
+    START([START]) --> router["router"]
+
+    router -.->|route_next: internal_agent_node| llm_agent["llm_agent_node"]
+    router -.->|route_next: generic_agent_node| generic_agent["generic_agent_node"]
+
+    llm_agent -.->|tools_condition: tool calls| tools["tools"]
+    llm_agent -.->|tools_condition: no tool calls| END([END])
+    llm_agent -->|direct edge| END
+
+    tools --> llm_agent
+    generic_agent --> END
+```
